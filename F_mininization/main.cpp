@@ -25,28 +25,11 @@ const float MUTATION_CHANCE = 0.05;
 const uint BYTE_SIZE = 8; // in bits
 const uint FLOAT_SIZE = sizeof(float) * BYTE_SIZE;
 const uint UINT_SIZE = sizeof(uint) * BYTE_SIZE;
-const uint POPULATION_SIZE = 4;
-
+const uint POPULATION_SIZE = 20;
 
 // Randomization
 std::random_device rd;
 std::mt19937 mt(rd());
-
-
-// To get float mantisa
-const uint MANTISA_SIZE = 23;
-const uint EXPONENT_SIZE = 8;
-const uint SIGN_SIZE = 1;
-
-typedef union {
-  float f;
-  struct {
-    unsigned int mantisa : MANTISA_SIZE;
-    unsigned int exponent : EXPONENT_SIZE;
-    unsigned int sign : SIGN_SIZE;
-  } parts;
-} float_cast;
-
 
 //!
 //! \param y
@@ -89,11 +72,8 @@ uint generateCrossMask(uint breakPoint = 0)
 
 ChromoPair cross(ChromoPair pair = { 0.0, 0.0 })
 {
-    float_cast pA { .f = pair.first };
-    float_cast pB { .f = pair.second };
-
-    uint parentA = pA.parts.mantisa,
-         parentB = pB.parts.mantisa;
+    uint parentA = reinterpret_cast<uint&>(pair.first),
+         parentB = reinterpret_cast<uint&>(pair.second);
 
     uint breakPoint = randomUIntDist(0, FLOAT_SIZE - 1);
     uint crossMask = generateCrossMask(breakPoint);
@@ -101,26 +81,18 @@ ChromoPair cross(ChromoPair pair = { 0.0, 0.0 })
     uint childA = (parentA & crossMask) | (parentB & (~crossMask)),
          childB = (parentB & crossMask) | (parentA & (~crossMask));
 
-    pA.parts.mantisa = childA;
-    pB.parts.mantisa = childB;
-
-    pair.first = pA.f;
-    pair.second = pB.f;
+    pair.first = reinterpret_cast<float&>(childA);
+    pair.second = reinterpret_cast<float&>(childB);
 
     return pair;
 }
 
 float mutate(float parentChromosome = 0.0)
 {
-    float_cast p { .f = parentChromosome };
-
     uint randomBit = randomUIntDist(0, FLOAT_SIZE - 1);
-    uint parent = p.parts.mantisa;
+    uint parent = reinterpret_cast<uint&>(parentChromosome);
     uint child = parent ^ (1 << (UINT_SIZE - randomBit - 1));
-
-    p.parts.mantisa = child;
-
-    return p.f;
+    return reinterpret_cast<float&>(child);
 }
 
 //!
@@ -201,13 +173,16 @@ int main()
 {
     const float maximum = f(20.0);
     const uint n = 1;
-    const uint precision = pow(10, -n);
+    const float precision = 1 / pow(10, n);
 
     // #1 Creating first population
     unique_ptr<Population> p = getFirstPopulation(POPULATION_SIZE);
 
     // #2 Generating populations
-    auto isEnoughPrecise = [&](float ch) { return (ch > maximum - precision) && (ch < maximum + precision); };
+    auto isEnoughPrecise = [&](float ch) {
+        bool result = (ch >= maximum - precision) && (ch <= maximum + precision);
+        return result;
+    };
 
     uint index {};
     do {
@@ -217,7 +192,9 @@ int main()
         cout << endl
              << "------------------------------------------" << endl;
         cout << "Iteration #" << index << endl;
+        cout << "Fitness: " << index << endl;
         cout << "Results: ";
+
         for (double ch : *p)
             cout << ch << " ";
 
@@ -226,6 +203,7 @@ int main()
     cout << endl
          << endl;
     cout << "Cool! We found enough precise value in " << index << " generation!" << endl;
+    cout << "Real anwer is: " << maximum << endl;
 
     return 0;
 }
